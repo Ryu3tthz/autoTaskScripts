@@ -4,5 +4,5 @@ $filePath = "`"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`""
 foreach ($url in $urls) {
     Start-Process  -ArgumentList $url, $chromeArgument -WindowStyle Minimized -FilePath $filePath
 }
-Start-Sleep -Seconds 5
+Start-Sleep -Seconds 30
 Stop-Process -Name "msedge"

@@ -5,19 +5,22 @@ This script aims to automatically login in warframe and get daily bonus.
 '''
 
 import os
-import random
 import subprocess
 import time
 import tqdm
 
 import python_hosts
 from pywinauto.application import Application
+import pywinauto.mouse
+
 
 warframePath = "C:/Users/primi/Desktop/Warframe.url"
 warframeLauncherWaitTime = 1500
-bounsCoords = (937,572)
+bounsCoords1, bounsCoords2 = (937, 572), (935, 683)
+
+
 def isProcessRunning(processName):
-    return (str(subprocess.check_output("powershell.exe -Command \"ps | Where-Object ProcessName -eq "+ processName+ " \"", shell=True)).find(processName) != -1)
+    return (str(subprocess.check_output("powershell.exe -Command \"ps | Where-Object ProcessName -eq " + processName + " \"", shell=True)).find(processName) != -1)
 
 
 print("Kill process Launcher.exe Warframe.x64.exe")
@@ -96,13 +99,14 @@ app['Warframe'].type_keys("{ENTER}")
 print("Login Success!")
 for i in tqdm.trange(1000):
     time.sleep(0.01)
+
 print("Get daily bonus")
-# time.sleep(3)
-for i in range(5):
-    app['Warframe'].click_input(button='left', coords=bounsCoords+(random.randint(0,20),random.randint(0,20)))
-    app['Warframe'].click_input(button='right', coords=bounsCoords+(random.randint(0,20),random.randint(0,20)))
+for i in range(2):
+    app['Warframe'].click_input(button='left', coords=bounsCoords1)
     time.sleep(0.3)
-for i in tqdm.trange(500):
+    app['Warframe'].press_mouse(button='left', coords=bounsCoords2)
+    time.sleep(0.3)
+for i in tqdm.trange(100):
     time.sleep(0.01)
 os.system("taskkill /f /im Warframe.x64.exe")
 hosts.remove_all_matching(address='23.67.163.105')

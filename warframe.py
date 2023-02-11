@@ -7,12 +7,11 @@ This script aims to automatically login in warframe and get daily bonus.
 import os
 import subprocess
 import time
-import tqdm
 
 import python_hosts
-from pywinauto.application import Application
 import pywinauto.mouse
-
+import tqdm
+from pywinauto.application import Application
 
 warframePath = "C:/Users/primi/Desktop/Warframe.url"
 warframeLauncherWaitTime = 1500
@@ -97,7 +96,7 @@ app['Warframe'].click_input(button='left', coords=(870, 445))
 app['Warframe'].type_keys("fjb123.")
 app['Warframe'].type_keys("{ENTER}")
 print("Login Success!")
-for i in tqdm.trange(1000):
+for i in tqdm.trange(2000):
     time.sleep(0.01)
 
 print("Get daily bonus")

@@ -1,6 +1,6 @@
 Set-Location "C:\Programs\rclone\"
-$processName = "rclone.exe"
-$process = Get-Process -Name $processName -ErrorAction SilentlyContinue
+$processName = "rclone"
+$process = Get-Process -Name $processName
 if ($process) {
     $process | Stop-Process -Force
 }

@@ -1,5 +1,5 @@
 [ScriptFile]
-Path=C:\Users\primi\Documents\autoTaskScripts\startHidden.vbs
+Path=%USERPROFILE%\Documents\autoTaskScripts\startHidden.vbs
 [Options]
 Timeout=1
 DisplayLogo=1

@@ -13,7 +13,7 @@ import pywinauto.mouse
 import tqdm
 from pywinauto.application import Application
 
-warframePath = "C:/Users/primi/Desktop/Warframe.url"
+warframePath = "%USERPROFILE%/Desktop/Warframe.url"
 warframeLauncherWaitTime = 1500
 bounsCoords1, bounsCoords2 = (937, 572), (935, 683)
 

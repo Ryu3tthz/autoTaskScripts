@@ -4,22 +4,28 @@ import random
 import re
 import time
 import urllib.parse
-
+import os
 import pdfplumber
 import PyPDF2
 import requests
+import csv
 
 # config
-DEBUG = True
-workPath = "./fund/result"
+DEBUG = False
+workPath = "./result"
+MAXTRYTIMES = 10
 
 jsonpCallbackNum = math.floor(random.uniform(0.1, 1) * (100000000 + 1))
 timeStamp = int(time.time() * 1000)
 currentDate = time.strftime("%Y-%m-%d", time.localtime())
+if DEBUG:
+    currentDate = "2024-05-07"
 currentDateYYYYMMDD = time.strftime("%Y%m%d", time.localtime())
 
 
-def getFundJSONList(startDate="2021-04-12", endDate=currentDate, queryWords="发售公告"):
+def getFundJSONList(
+    startDate="2022-04-12", endDate=currentDate, queryWords="发售公告"
+) -> list:
 
     # requestBaseUrl = "http://www.sse.com.cn/disclosure/fund/announcement/json/fund_bulletin_publish_order.json"
     # downloadBaseUrl = "http://www.sse.com.cn"
@@ -57,29 +63,31 @@ def getFundJSONList(startDate="2021-04-12", endDate=currentDate, queryWords="发
         "Referer": """http://www.sse.com.cn/""",
         "User-Agent": """Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,   like Gecko) Chrome/118.0.0.0 Safari/537.36""",
     }
-    re = requests.get(requestQueryUrl, headers=header, timeout=10)
+    for i in range(MAXTRYTIMES):
+        re = requests.get(requestQueryUrl, headers=header, timeout=10)
+        if re.status_code == 200:
+            break
+        else:
+            time.sleep(10)
 
     resultList = []
-    if re.status_code == 200:
-        response = re.text
-        indexL = response.find("{")
-        indexR = response.rfind("}") + 1
-        responseStr = response[indexL:indexR]
-        responseJsonObject = json.loads(responseStr)
-        for item in responseJsonObject["result"]:
-            resultList.append(item)
+    response = re.text
+    indexL = response.find("{")
+    indexR = response.rfind("}") + 1
+    responseStr = response[indexL:indexR]
+    responseJsonObject = json.loads(responseStr)
+    for item in responseJsonObject["result"]:
+        resultList.append(item)
     return resultList
 
 
-def setDir(date):
-    import os
-
+def setDir(date) -> None:
     path = workPath + "/" + date.replace("-", "")
     if not os.path.exists(path):
         os.makedirs(path)
 
 
-def downloadPDF(fundObejct):
+def downloadPDF(fundObejct) -> str:
     downloadBaseUrl = "http://www.sse.com.cn"
     downloadUrl = downloadBaseUrl + fundObejct["URL"].replace("//", "")
     request = requests.get(downloadUrl, timeout=10)
@@ -104,7 +112,7 @@ def downloadPDF(fundObejct):
     return ""
 
 
-def pdf2txt(pdfPath):
+def pdf2txt(pdfPath) -> str:
     pdfFile = open(pdfPath, "rb")
     pdfReader = PyPDF2.PdfReader(pdfFile)
     text = ""
@@ -116,13 +124,20 @@ def pdf2txt(pdfPath):
     return text
 
 
-def saveTxt(txtPath, text):
+def saveTxt(txtPath, text) -> None:
     with open(txtPath, "w", encoding="utf-8") as file:
         file.write(text)
         file.close()
 
 
-def getTables(pdfFilePath):
+def readTxt(txtPath) -> str:
+    with open(txtPath, "r", encoding="utf-8") as file:
+        text = file.read()
+        file.close()
+        return text
+
+
+def getTables(pdfFilePath) -> list:
     tables = []
     with pdfplumber.open(pdfFilePath) as pdf:
         for page in pdf.pages:
@@ -130,83 +145,117 @@ def getTables(pdfFilePath):
     return tables
 
 
-def searchTables(tables, keyWordList):
+def searchTables(tables, keyWordList) -> list:
     result = []
-    for keyWord in keyWordList:
-        for table in tables:
-            for row in table:
-                if len(row) != 4:
-                    continue
-                for cells in row:
-                    if len(cells) != 0:
-                        for cell in cells:
-                            if cell is not None:
-                                if (keyWord in cell) and (row not in result):
-                                    result.append(row)
+    for rowIndex in range(len(tables) - 1):
+        flag = False
+        if len(tables[rowIndex]) != 0 and len(tables[rowIndex][0]) == 4:
+            for keyWord in keyWordList:
+                if (
+                    keyWord in tables[rowIndex][0][0][0] or tables[rowIndex][0][0][1]
+                ) and tables[rowIndex] not in result:
+                    result.append(tables[rowIndex][0])
+                    flag = True
+                    break
+        if (
+            (len(tables[rowIndex]) == 1)
+            and (len(tables[rowIndex + 1]) == 1)
+            and (len(tables[rowIndex][0]) + len(tables[rowIndex + 1][0]) == 4)
+        ):
+            temp = tables[rowIndex][0] + tables[rowIndex + 1][0]
+            for keyWord in keyWordList:
+                if keyWord in temp[0][0][0] or temp[0][0][1]:
+                    result.append(temp)
+                    flag = True
+                    break
+        if flag:
+            break
     return result
 
 
-resultList = getFundJSONList()
-fundCount = 0
-newFundList = []
-codeList = []
-subscriptionList = []
-for e in resultList:
-    if (e["SSEDATE"] == currentDate) != DEBUG:
-        fundCount += 1
-        path = downloadPDF(e)
-        newFundTables = searchTables(getTables(path), ["认购份额"])
-        newFundList.append(e)
-        code = e["SECURITY_CODE"]
-        fundText = pdf2txt(path).replace("\n", "")
-        allCodeMatches = re.findall(re.compile(code[0:-1] + "[0-9]"), fundText)
-        for i in allCodeMatches:
-            if i != code:
-                codeList.append(i)
-        pattern = re.compile(
-            r"网上现金认购的.+?(\d{4}年\d{1,2}月\d{1,2}日至\d{1,4}年\d{1,2}月\d{1,2}日)"
-        )
-        if DEBUG:
-            print(code, end=" ")
-        matches = re.findall(pattern, fundText)
-        for match in matches:
-            if match not in subscriptionList:
-                subscriptionList.append(match)
-if fundCount != len(newFundTables):
-    print("Error!")
-else:
-    print(fundCount)
-    sampleString = ""
-    for i in range(fundCount):
-        sampleString += (
-            str(i + 1)
-            + "、基金名称："
-            + newFundList[i]["TITLE"].replace("基金份额发售公告", "")
-            + "\n"
-            + "基金认购简称："
-            + newFundList[i]["FUND_EXPANSION_ABBR"]
-            + "\n"
-            + "基金认购代码："
-            + codeList[i]
-            + "\n发行市场：上海\n发行时间："
-            + subscriptionList[i]
-            + "\n认购费率如下所示：\n\n"
-            + str(newFundTables[i][0][0])
-            + "          "
-            + str(newFundTables[i][0][1])
-            + "\n"
-            + str(newFundTables[i][1][0])
-            + "                "
-            + str(newFundTables[i][1][1])
-            + "\n"
-            + str(newFundTables[i][2][0])
-            + "        "
-            + str(newFundTables[i][2][1])
-            + "\n"
-            + str(newFundTables[i][3][0])
-            + "            "
-            + str(newFundTables[i][3][1])
-            + "\n"
-        )
+def main():
+    resultList = getFundJSONList()
+    fundCount = 0
+    for e in resultList:
+        if (e["SSEDATE"] == currentDate) != DEBUG:
+            fundCount += 1
+    if DEBUG:
+        print("DEBUG")
+    print(str(currentDateYYYYMMDD) + "_SH: " + str(fundCount) + " fund")
+    newFundList = []
+    codeList = []
+    subscriptionList = []
+    newFundTables = []
+    for e in resultList:
+        if (e["SSEDATE"] == currentDate) != DEBUG:
+            path = downloadPDF(e)
+            newFundTables.append(searchTables(
+                getTables(path), ["认购份额", "认购金额", "认购费率"]))
+            newFundList.append(e)
+            code = e["SECURITY_CODE"]
+            if not os.path.exists(path[0:-3] + "txt"):
+                fundText = re.sub(r"[\s\n]+", "", pdf2txt(path))
+                saveTxt(path[0:-3] + "txt", fundText)
+            else:
+                fundText = readTxt(path[0:-3] + "txt")
+            codeList.append(code)
+            if DEBUG:
+                print(code, end=" ")
+            pattern = re.compile(
+                r"(.{5,20})(\d{4}年\d{1,2}月\d{1,2}日(?:起至|至)\d{1,4}年\d{1,2}月\d{1,2}日)"
+            )  # 20
+            matches = re.findall(pattern, fundText)
+            for match in matches:
+                if "网上现金" in match[0]:
+                    if match[1] not in subscriptionList:
+                        subscriptionList.append(match[1])
+                    else:
+                        print(code + ": O1")
+    if fundCount != len(newFundTables) | fundCount != len(subscriptionList):
+        print("Error!")
+    else:
+        if fundCount != 0:
+            with open("fund.csv", "a") as file:
+                writer = csv.writer(file, delimiter=",")
+                for code in codeList:
+                    writer.writerow(
+                        [currentDateYYYYMMDD, "SH", code, currentDateYYYYMMDD, " "]
+                    )
+            file.close()
+        print("START--------------------------------SH")
+        sampleString = ""
+        for i in range(fundCount):
+            sampleString += (
+                str(i + 1)
+                + "、基金名称："
+                + newFundList[i]["TITLE"].replace("基金份额发售公告", "")
+                + "\n"
+                + "基金认购简称："
+                + newFundList[i]["FUND_EXPANSION_ABBR"]
+                + "\n"
+                + "基金认购代码："
+                + codeList[i]
+                + "\n发行市场：上海\n发行时间："
+                + subscriptionList[i]
+                + "\n认购费率如下所示：\n\n"
+                + str(newFundTables[i][0][0][0])
+                + "          "
+                + str(newFundTables[i][0][0][1])
+                + "\n"
+                + str(newFundTables[i][0][1][0])
+                + "                "
+                + str(newFundTables[i][0][1][1])
+                + "\n"
+                + str(newFundTables[i][0][2][0])
+                + "        "
+                + str(newFundTables[i][0][2][1])
+                + "\n"
+                + str(newFundTables[i][0][3][0])
+                + "            "
+                + str(newFundTables[i][0][3][1])
+                + "\n"
+            )
+        print(sampleString, end="END--------------------------------SH\n")
 
-    print(sampleString, end="")
+
+main()
